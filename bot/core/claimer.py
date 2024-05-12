@@ -19,6 +19,9 @@ from db.functions import get_user_proxy, get_user_agent, save_log
 from .headers import headers
 
 
+local_db = {}
+
+
 class Claimer:
     def __init__(self, tg_client: Client, db_pool: async_sessionmaker, user_data: User):
         self.session_name = tg_client.name
@@ -118,85 +121,88 @@ class Claimer:
             if proxy:
                 await self.check_proxy(http_client=http_client, proxy=proxy)
 
-            while True:
-                try:
-                    if time() - access_token_created_time >= 3600:
-                        tg_web_data = await self.get_tg_web_data(proxy=proxy)
+            try:
+                local_token = local_db[self.session_name]['Token']
+                if not local_token:
+                    tg_web_data = await self.get_tg_web_data(proxy=proxy)
 
-                        http_client.headers["telegramRawData"] = tg_web_data
-                        headers["telegramRawData"] = tg_web_data
-
-                        access_token_created_time = time()
-
-                        mining_data = await self.get_mining_data(http_client=http_client)
-
-                        last_claim_time = datetime.fromtimestamp(
-                            int(str(mining_data['dttmLastClaim'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
-                        claim_deadline_time = datetime.fromtimestamp(
-                            int(str(mining_data['dttmClaimDeadline'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
-
-                        logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
-                        logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
+                    http_client.headers["telegramRawData"] = tg_web_data
+                    headers["telegramRawData"] = tg_web_data
 
                     mining_data = await self.get_mining_data(http_client=http_client)
 
-                    balance = mining_data['gotAmount']
-                    available = mining_data['miningAmount']
-                    speed = mining_data['speed']
+                    last_claim_time = datetime.fromtimestamp(
+                        int(str(mining_data['dttmLastClaim'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
+                    claim_deadline_time = datetime.fromtimestamp(
+                        int(str(mining_data['dttmClaimDeadline'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
 
-                    logger.info(f"{self.session_name} | Balance: <c>{balance}</c> | "
-                                f"Available: <e>{available}</e> | "
-                                f"Speed: <m>{speed}</m>")
+                    logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
+                    logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
+                else:
+                    http_client.headers["Authorization"] = f"Bearer {local_token}"
+                    claim_time = local_db[self.session_name]['ClaimTime']
 
-                    if time() - claim_time >= settings.SLEEP_BETWEEN_CLAIM * 60 and available > 0:
-                        retry = 0
-                        while retry <= settings.CLAIM_RETRY:
-                            status = await self.send_claim(http_client=http_client)
-                            if status:
-                                mining_data = await self.get_mining_data(http_client=http_client)
+                mining_data = await self.get_mining_data(http_client=http_client)
 
-                                balance = mining_data['gotAmount']
+                balance = mining_data['gotAmount']
+                available = mining_data['miningAmount']
+                speed = mining_data['speed']
 
-                                logger.success(f"{self.session_name} | Successful claim | "
-                                               f"Balance: <c>{balance}</c> (<g>+{available}</g>)")
-                                logger.info(f"Next claim in {settings.SLEEP_BETWEEN_CLAIM}min")
+                logger.info(f"{self.session_name} | Balance: <c>{balance}</c> | "
+                            f"Available: <e>{available}</e> | "
+                            f"Speed: <m>{speed}</m>")
 
-                                await save_log(
-                                    db_pool=self.db_pool,
-                                    phone=self.user_data.phone_number,
-                                    status="CLAIM",
-                                    amount=balance,
-                                )
+                if time() - claim_time >= settings.SLEEP_BETWEEN_CLAIM * 60 and available > 0:
+                    retry = 0
+                    while retry <= settings.CLAIM_RETRY:
+                        status = await self.send_claim(http_client=http_client)
+                        if status:
+                            mining_data = await self.get_mining_data(http_client=http_client)
 
-                                claim_time = time()
-                                break
+                            balance = mining_data['gotAmount']
+
+                            logger.success(f"{self.session_name} | Successful claim | "
+                                           f"Balance: <c>{balance}</c> (<g>+{available}</g>)")
+                            logger.info(f"Next claim in {settings.SLEEP_BETWEEN_CLAIM}min")
 
                             await save_log(
                                 db_pool=self.db_pool,
                                 phone=self.user_data.phone_number,
-                                status="ERROR",
+                                status="CLAIM",
                                 amount=balance,
                             )
 
-                            logger.info(f"{self.session_name} | Retry <y>{retry}</y> of <e>{settings.CLAIM_RETRY}</e>")
-                            retry += 1
+                            claim_time = time()
 
-                except InvalidSession as error:
-                    raise error
+                            local_db[self.session_name]['ClaimTime'] = claim_time
 
-                except Exception as error:
-                    logger.error(f"{self.session_name} | Unknown error: {error}")
-                    await asyncio.sleep(delay=3)
+                            return
 
-                else:
-                    logger.info(f"Sleep 1min")
-                    await asyncio.sleep(delay=60)
+                        await save_log(
+                            db_pool=self.db_pool,
+                            phone=self.user_data.phone_number,
+                            status="ERROR",
+                            amount=balance,
+                        )
+
+                        logger.info(f"{self.session_name} | Retry <y>{retry}</y> of <e>{settings.CLAIM_RETRY}</e>")
+                        retry += 1
+
+            except InvalidSession as error:
+                raise error
+
+            except Exception as error:
+                logger.error(f"{self.session_name} | Unknown error: {error}")
+                await asyncio.sleep(delay=3)
 
 
 async def run_claimer(tg_client: Client, db_pool: async_sessionmaker):
     try:
         async with tg_client:
             user_data = await tg_client.get_me()
+
+        if not local_db.get(tg_client.name):
+            local_db[tg_client.name] = {'Token': '', 'ClaimTime': 0}
 
         proxy = None
         if settings.USE_PROXY_FROM_DB:
