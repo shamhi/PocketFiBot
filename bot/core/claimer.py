@@ -139,7 +139,6 @@ class Claimer:
                     logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
                     logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
                 else:
-                    http_client.headers["Authorization"] = f"Bearer {local_token}"
                     claim_time = local_db[self.session_name]['ClaimTime']
 
                 mining_data = await self.get_mining_data(http_client=http_client)
