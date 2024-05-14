@@ -100,16 +100,19 @@ class Claimer:
 
             return False
 
-    async def check_proxy(self, http_client: aiohttp.ClientSession, proxy: Proxy) -> None:
+    async def check_proxy(self, http_client: aiohttp.ClientSession, proxy: Proxy) -> bool:
         try:
             response = await http_client.get(url='https://httpbin.org/ip', timeout=aiohttp.ClientTimeout(5))
             ip = (await response.json()).get('origin')
             logger.info(f"{self.session_name} | Proxy IP: {ip}")
+
+            return bool(ip)
         except Exception as error:
             logger.error(f"{self.session_name} | Proxy: {proxy} | Error: {error}")
 
+            return False
+
     async def run(self, proxy: str | None) -> None:
-        access_token_created_time = 0
         claim_time = 0
 
         proxy_conn = ProxyConnector().from_url(proxy) if proxy else None
@@ -119,7 +122,9 @@ class Claimer:
 
         async with aiohttp.ClientSession(headers=headers, connector=proxy_conn) as http_client:
             if proxy:
-                await self.check_proxy(http_client=http_client, proxy=proxy)
+                status = await self.check_proxy(http_client=http_client, proxy=proxy)
+                if status is not True:
+                    return
 
             try:
                 local_token = local_db[self.session_name]['Token']
