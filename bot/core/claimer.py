@@ -204,11 +204,16 @@ class Claimer:
 
 async def run_claimer(tg_client: Client, db_pool: async_sessionmaker):
     try:
-        async with tg_client:
-            user_data = await tg_client.get_me()
-
         if not local_db.get(tg_client.name):
-            local_db[tg_client.name] = {'Token': '', 'ClaimTime': 0}
+            local_db[tg_client.name] = {'UserData': None, 'Token': '', 'ClaimTime': 0}
+
+        if not local_db[tg_client.name]['UserData']:
+            async with tg_client:
+                user_data = await tg_client.get_me()
+
+                local_db[tg_client.name]['UserData'] = user_data
+        else:
+            user_data = local_db[tg_client.name]['UserData']
 
         proxy = None
         if settings.USE_PROXY_FROM_DB:
