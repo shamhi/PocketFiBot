@@ -127,26 +127,19 @@ class Claimer:
                     return
 
             try:
-                local_token = local_db[self.session_name]['Token']
-                if not local_token:
-                    tg_web_data = await self.get_tg_web_data(proxy=proxy)
+                tg_web_data = await self.get_tg_web_data(proxy=proxy)
 
-                    http_client.headers["telegramRawData"] = tg_web_data
+                http_client.headers["telegramRawData"] = tg_web_data
 
-                    local_db[self.session_name]['Token'] = tg_web_data
+                mining_data = await self.get_mining_data(http_client=http_client)
 
-                    mining_data = await self.get_mining_data(http_client=http_client)
+                last_claim_time = datetime.fromtimestamp(
+                    int(str(mining_data['dttmLastClaim'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
+                claim_deadline_time = datetime.fromtimestamp(
+                    int(str(mining_data['dttmClaimDeadline'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
 
-                    last_claim_time = datetime.fromtimestamp(
-                        int(str(mining_data['dttmLastClaim'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
-                    claim_deadline_time = datetime.fromtimestamp(
-                        int(str(mining_data['dttmClaimDeadline'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
-
-                    logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
-                    logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
-                else:
-                    http_client.headers["telegramRawData"] = local_token
-                    claim_time = local_db[self.session_name]['ClaimTime']
+                logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
+                logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
 
                 mining_data = await self.get_mining_data(http_client=http_client)
 
@@ -179,8 +172,6 @@ class Claimer:
                             )
 
                             claim_time = time()
-
-                            local_db[self.session_name]['ClaimTime'] = claim_time
 
                             return
 
