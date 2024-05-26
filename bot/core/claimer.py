@@ -156,7 +156,7 @@ class Claimer:
                             f"Available: <e>{available}</e> | "
                             f"Speed: <m>{speed}</m>")
 
-                if time() - claim_time >= settings.SLEEP_BETWEEN_CLAIM * 60 and available > 0:
+                if time() >= claim_time and available > 0:
                     retry = 0
                     while retry <= settings.CLAIM_RETRY:
                         status = await self.send_claim(http_client=http_client)
