@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.config import settings
 from bot.utils import logger
+from bot.utils.scripts import get_claim_time, set_claim_time
 from bot.exceptions import InvalidSession
 from db.functions import get_user_proxy, get_user_agent, save_log
 from .headers import headers
@@ -113,9 +114,13 @@ class Claimer:
             return False
 
     async def run(self, proxy: str | None) -> None:
-        claim_time = 0
-
         proxy_conn = ProxyConnector().from_url(proxy) if proxy else None
+
+        claim_time = get_claim_time(self.tg_client.name)
+
+        if time() < claim_time:
+            logger.info(f"{self.session_name} | Next claim in <y>{claim_time - time()}s</y> | Next sessions pack")
+            return
 
         user_agent = await get_user_agent(db_pool=self.db_pool, phone_number=self.user_data.phone_number)
         headers['User-Agent'] = user_agent
@@ -138,8 +143,8 @@ class Claimer:
                 claim_deadline_time = datetime.fromtimestamp(
                     int(str(mining_data['dttmClaimDeadline'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
 
-                logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
-                logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
+                logger.info(f"{self.session_name} | Last claim time: <y>{last_claim_time}</y>")
+                logger.info(f"{self.session_name} | Claim deadline time: <y>{claim_deadline_time}</y>")
 
                 mining_data = await self.get_mining_data(http_client=http_client)
 
@@ -162,7 +167,6 @@ class Claimer:
 
                             logger.success(f"{self.session_name} | Successful claim | "
                                            f"Balance: <c>{balance}</c> (<g>+{available}</g>)")
-                            logger.info(f"Next claim in {settings.SLEEP_BETWEEN_CLAIM}min")
 
                             await save_log(
                                 db_pool=self.db_pool,
@@ -171,7 +175,9 @@ class Claimer:
                                 amount=balance,
                             )
 
-                            claim_time = time()
+                            claim_time = time() + (settings.SLEEP_BETWEEN_CLAIM * 60)
+
+                            set_claim_time(self.tg_client.name, claim_time)
 
                             return
 
@@ -181,6 +187,8 @@ class Claimer:
                             status="ERROR",
                             amount=balance,
                         )
+
+                        set_claim_time(self.tg_client.name, time()+3600)
 
                         logger.info(f"{self.session_name} | Retry <y>{retry}</y> of <e>{settings.CLAIM_RETRY}</e>")
                         retry += 1

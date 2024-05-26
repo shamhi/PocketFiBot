@@ -52,8 +52,11 @@ def move_bad_sessions() -> None:
 
     bad_session_names = get_bad_session_names()
 
-    for session_name in bad_session_names:
-        shutil.move(f'sessions/{session_name}.session', f'sessions/bad_sessions/{session_name}.session')
+    try:
+        for session_name in bad_session_names:
+            shutil.move(f'sessions/{session_name}.session', f'sessions/bad_sessions/{session_name}.session')
+    except:
+        ...
 
     with open('sessions/bad_sessions.txt', 'w') as file:
         file.write('')
