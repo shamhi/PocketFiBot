@@ -157,7 +157,7 @@ class Claimer:
                             f"Speed: <m>{speed}</m>")
 
                 if time() >= claim_time and available > 0:
-                    retry = 0
+                    retry = 1
                     while retry <= settings.CLAIM_RETRY:
                         status = await self.send_claim(http_client=http_client)
                         if status:
