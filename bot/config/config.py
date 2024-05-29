@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     CLAIM_RETRY: int = 3
     SLEEP_BETWEEN_CLAIM: int = 180
 
+    SESSION_PACK_LIMIT: int = 10
+    NEXT_PACK_DELAY: int = 3
+
+    CLAIM_SECONDS_TO_ERROR: int = 3600
+
     USE_PROXY_FROM_DB: bool = False
 
 

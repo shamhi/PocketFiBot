@@ -147,7 +147,7 @@ async def process() -> None:
 
 async def run_tasks(tg_clients: list[Client], db_pool: async_sessionmaker) -> None:
     tasks = [run_claimer(tg_client=tg_client, db_pool=db_pool) for tg_client in tg_clients]
-    limit = 10
+    limit = settings.SESSION_PACK_LIMIT
     offset = 0
 
     while True:
@@ -156,7 +156,7 @@ async def run_tasks(tg_clients: list[Client], db_pool: async_sessionmaker) -> No
         if not chunk:
             tasks = [run_claimer(tg_client=tg_client, db_pool=db_pool) for tg_client in tg_clients]
 
-            limit = 10
+            limit = settings.SESSION_PACK_LIMIT
             offset = 0
 
             continue
@@ -168,4 +168,4 @@ async def run_tasks(tg_clients: list[Client], db_pool: async_sessionmaker) -> No
 
         offset += limit
 
-        await asyncio.sleep(delay=2)
+        await asyncio.sleep(delay=settings.NEXT_PACK_DELAY)

@@ -14,9 +14,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from bot.config import settings
 from bot.utils import logger
-from bot.utils.scripts import get_claim_time, set_claim_time
 from bot.exceptions import InvalidSession
-from db.functions import get_user_proxy, get_user_agent, save_log
+from db.functions import get_user_proxy, get_user_agent, save_log, get_claim_time, set_claim_time
 from .headers import headers
 
 
@@ -89,6 +88,32 @@ class Claimer:
             logger.error(f"{self.session_name} | Unknown error when getting Profile Data: {error}")
             await asyncio.sleep(delay=3)
 
+    async def get_guild(self, http_client: aiohttp.ClientSession, guild: int) -> dict[str]:
+        try:
+            response = await http_client.get(f'https://bot.pocketfi.org/mining/guilds/{guild}')
+            response.raise_for_status()
+
+            response_json = await response.json()
+            guilds = response_json
+
+            return guilds
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error when getting Guilds: {error}")
+            await asyncio.sleep(delay=3)
+
+    async def get_alliance(self, http_client: aiohttp.ClientSession, alliance: str) -> dict[str]:
+        try:
+            response = await http_client.get(f'https://bot.pocketfi.org/mining/alliances/{alliance}')
+            response.raise_for_status()
+
+            response_json = await response.json()
+            alliances = response_json
+
+            return alliances
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error when getting Alliances: {error}")
+            await asyncio.sleep(delay=3)
+
     async def send_claim(self, http_client: aiohttp.ClientSession) -> bool:
         try:
             response = await http_client.post('https://bot.pocketfi.org/mining/claimMining', json={})
@@ -116,7 +141,7 @@ class Claimer:
     async def run(self, proxy: str | None) -> None:
         proxy_conn = ProxyConnector().from_url(proxy) if proxy else None
 
-        claim_time = get_claim_time(self.tg_client.name)
+        claim_time = await get_claim_time(db_pool=self.db_pool, phone_number=self.user_data.phone_number)
 
         if time() < claim_time:
             logger.info(f"{self.session_name} | Next claim in <y>{claim_time - time()}s</y> | Next sessions pack")
@@ -148,6 +173,13 @@ class Claimer:
 
                 mining_data = await self.get_mining_data(http_client=http_client)
 
+                guild = mining_data['guild']
+                alliance = mining_data.get('alliance')
+
+                await self.get_guild(http_client=http_client, guild=guild)
+                if alliance:
+                    await self.get_alliance(http_client=http_client, alliance=alliance)
+
                 balance = mining_data['gotAmount']
                 available = mining_data['miningAmount']
                 speed = mining_data['speed']
@@ -177,7 +209,9 @@ class Claimer:
 
                             claim_time = time() + (settings.SLEEP_BETWEEN_CLAIM * 60)
 
-                            set_claim_time(self.tg_client.name, claim_time)
+                            await set_claim_time(db_pool=self.db_pool,
+                                                 phone_number=self.user_data.phone_number,
+                                                 timestamp=claim_time)
 
                             return
 
@@ -188,7 +222,9 @@ class Claimer:
                             amount=balance,
                         )
 
-                        set_claim_time(self.tg_client.name, time()+3600)
+                        await set_claim_time(db_pool=self.db_pool,
+                                             phone_number=self.user_data.phone_number,
+                                             timestamp=time() + settings.CLAIM_SECONDS_TO_ERROR)
 
                         logger.info(f"{self.session_name} | Retry <y>{retry}</y> of <e>{settings.CLAIM_RETRY}</e>")
                         retry += 1
