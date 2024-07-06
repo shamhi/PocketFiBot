@@ -181,7 +181,7 @@ class Claimer:
                         #print(get_daily_reward_task(list_of_tasks_daily))
 
                         #print(json.dumps(response_dict, indent=4, sort_keys=True))
-                        exit()
+                        #exit()
 
                     mining_data = await self.get_mining_data(http_client=http_client)
 
