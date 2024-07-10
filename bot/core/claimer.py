@@ -100,6 +100,30 @@ class Claimer:
         except Exception as error:
             logger.error(f"{self.session_name} | Proxy: {proxy} | Error: {error}")
 
+    async def check_daily(self, http_client: aiohttp.ClientSession) -> bool:
+        try:
+            response = await http_client.get('https://bot.pocketfi.org/mining/taskExecuting')
+            response.raise_for_status()
+            response_json = await response.json()
+            claim = response_json['tasks']['daily'][0]['doneAmount']
+            if claim == 0:
+                return True
+            else:
+                return False
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error when checking for daily reward: {error}")
+            await asyncio.sleep(delay=3)
+
+    async def claim_daily(self, http_client: aiohttp.ClientSession) -> int:
+        try:
+            response = await http_client.post(url='https://bot.pocketfi.org/boost/activateDailyBoost', json={})
+            response.raise_for_status()
+            response_json = await response.json()
+            return response_json['updatedForDay']
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error when claiming daily reward: {error}")
+            await asyncio.sleep(delay=3)
+
     async def run(self, proxy: str | None) -> None:
         access_token_created_time = 0
         claim_time = 0
@@ -142,6 +166,11 @@ class Claimer:
 
                     if time() - claim_time >= settings.SLEEP_BETWEEN_CLAIM * 60 and available > 0:
                         retry = 0
+                        daily = await self.check_daily(http_client=http_client)
+                        if daily:
+                            claim = await self.claim_daily(http_client=http_client)
+                            logger.info(f"{self.session_name} | Successful daily claim | "
+                                        f"Current day: <g>{claim+1}</g>")
                         while retry <= settings.CLAIM_RETRY:
                             status = await self.send_claim(http_client=http_client)
                             if status:
