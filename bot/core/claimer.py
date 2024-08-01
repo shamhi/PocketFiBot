@@ -139,22 +139,32 @@ class Claimer:
                     if time() - access_token_created_time >= 3600:
                         tg_web_data = await self.get_tg_web_data(proxy=proxy)
 
-                        http_client.headers["telegramRawData"] = tg_web_data
-                        headers["telegramRawData"] = tg_web_data
+                        if not tg_web_data:
+                            return
 
-                        access_token_created_time = time()
+                        http_client.headers["telegramRawData"] = tg_web_data
 
                         mining_data = await self.get_mining_data(http_client=http_client)
+
+                        if not mining_data:
+                            await asyncio.sleep(delay=3)
+                            continue
 
                         last_claim_time = datetime.fromtimestamp(
                             int(str(mining_data['dttmLastClaim'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
                         claim_deadline_time = datetime.fromtimestamp(
                             int(str(mining_data['dttmClaimDeadline'])[:-3])).strftime('%Y-%m-%d %H:%M:%S')
 
+                        access_token_created_time = time()
+
                         logger.info(f"{self.session_name} | Last claim time: {last_claim_time}")
                         logger.info(f"{self.session_name} | Claim deadline time: {claim_deadline_time}")
 
                     mining_data = await self.get_mining_data(http_client=http_client)
+
+                    if not mining_data:
+                        await asyncio.sleep(delay=3)
+                        continue
 
                     balance = mining_data['gotAmount']
                     available = mining_data['miningAmount']
@@ -175,6 +185,10 @@ class Claimer:
                             status = await self.send_claim(http_client=http_client)
                             if status:
                                 mining_data = await self.get_mining_data(http_client=http_client)
+
+                                if not mining_data:
+                                    await asyncio.sleep(delay=3)
+                                    continue
 
                                 balance = mining_data['gotAmount']
 
