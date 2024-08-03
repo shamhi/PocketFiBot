@@ -77,7 +77,7 @@ class Claimer:
 
     async def get_mining_data(self, http_client: aiohttp.ClientSession) -> dict[str]:
         try:
-            response = await http_client.get('https://bot.pocketfi.org/mining/getUserMining')
+            response = await http_client.get('https://gm.pocketfi.org/mining/getUserMining')
             response.raise_for_status()
 
             response_json = await response.json()
@@ -88,35 +88,9 @@ class Claimer:
             logger.error(f"{self.session_name} | Unknown error when getting Profile Data: {error}")
             await asyncio.sleep(delay=3)
 
-    async def get_guild(self, http_client: aiohttp.ClientSession, guild: int) -> dict[str]:
-        try:
-            response = await http_client.get(f'https://bot.pocketfi.org/mining/guilds/{guild}')
-            response.raise_for_status()
-
-            response_json = await response.json()
-            guilds = response_json
-
-            return guilds
-        except Exception as error:
-            logger.error(f"{self.session_name} | Unknown error when getting Guilds: {error}")
-            await asyncio.sleep(delay=3)
-
-    async def get_alliance(self, http_client: aiohttp.ClientSession, alliance: str) -> dict[str]:
-        try:
-            response = await http_client.get(f'https://bot.pocketfi.org/mining/alliances/{alliance}')
-            response.raise_for_status()
-
-            response_json = await response.json()
-            alliances = response_json
-
-            return alliances
-        except Exception as error:
-            logger.error(f"{self.session_name} | Unknown error when getting Alliances: {error}")
-            await asyncio.sleep(delay=3)
-
     async def send_claim(self, http_client: aiohttp.ClientSession) -> bool:
         try:
-            response = await http_client.post('https://bot.pocketfi.org/mining/claimMining', json={})
+            response = await http_client.post('https://gm.pocketfi.org/mining/claimMining', json={})
             response.raise_for_status()
 
             return True
@@ -126,17 +100,37 @@ class Claimer:
 
             return False
 
-    async def check_proxy(self, http_client: aiohttp.ClientSession, proxy: Proxy) -> bool:
+    async def check_proxy(self, http_client: aiohttp.ClientSession, proxy: Proxy) -> None:
         try:
             response = await http_client.get(url='https://httpbin.org/ip', timeout=aiohttp.ClientTimeout(5))
             ip = (await response.json()).get('origin')
             logger.info(f"{self.session_name} | Proxy IP: {ip}")
-
-            return bool(ip)
         except Exception as error:
             logger.error(f"{self.session_name} | Proxy: {proxy} | Error: {error}")
 
-            return False
+    async def check_daily(self, http_client: aiohttp.ClientSession) -> bool:
+        try:
+            response = await http_client.get('https://bot2.pocketfi.org/mining/taskExecuting')
+            response.raise_for_status()
+            response_json = await response.json()
+            claim = response_json['tasks']['daily'][0]['doneAmount']
+            if claim == 0:
+                return True
+            else:
+                return False
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error when checking for daily reward: {error}")
+            await asyncio.sleep(delay=3)
+
+    async def claim_daily(self, http_client: aiohttp.ClientSession) -> int:
+        try:
+            response = await http_client.post(url='https://bot2.pocketfi.org/boost/activateDailyBoost', json={})
+            response.raise_for_status()
+            response_json = await response.json()
+            return response_json['updatedForDay']
+        except Exception as error:
+            logger.error(f"{self.session_name} | Unknown error when claiming daily reward: {error}")
+            await asyncio.sleep(delay=3)
 
     async def run(self, proxy: str | None) -> None:
         proxy_conn = ProxyConnector().from_url(proxy) if proxy else None
@@ -190,6 +184,11 @@ class Claimer:
 
                 if time() >= claim_time and available > 0:
                     retry = 1
+                    daily = await self.check_daily(http_client=http_client)
+                    if daily:
+                        claim = await self.claim_daily(http_client=http_client)
+                        logger.info(f"{self.session_name} | Successful daily claim | "
+                                    f"Current day: <g>{claim + 1}</g>")
                     while retry <= settings.CLAIM_RETRY:
                         status = await self.send_claim(http_client=http_client)
                         if status:
